@@ -23,6 +23,7 @@
 #include <sstream>
 #include <string>
 
+#include "apiutil.h"
 #include "evaluate.h"
 #include "movegen.h"
 #include "position.h"
@@ -400,6 +401,48 @@ void UCI::loop(int argc, char* argv[]) {
       }
       else if (token == "load")     { load(is); argc = 1; } // continue reading stdin
       else if (token == "check")    load(is, true);
+      else if (token == "listmoves")
+      {
+          string variantName, fen, fenToken;
+          is >> variantName;
+          if (variantName.empty())
+          {
+              sync_cout << "Error: missing variant name" << sync_endl;
+              continue;
+          }
+          auto it = variants.find(variantName);
+          if (it == variants.end())
+          {
+              sync_cout << "Error: unknown variant '" << variantName << "'" << sync_endl;
+              continue;
+          }
+          while (is >> fenToken)
+              fen += fenToken + " ";
+          if (fen.empty())
+          {
+              sync_cout << "Error: missing FEN string" << sync_endl;
+              continue;
+          }
+          {
+              auto validation = FEN::validate_fen(fen, it->second);
+              if (validation != FEN::FEN_OK)
+              {
+                  sync_cout << "Error: invalid FEN (" << validation << ")" << sync_endl;
+                  continue;
+              }
+          }
+          StateListPtr localStates(new std::deque<StateInfo>(1));
+          Position localPos;
+          localPos.set(
+              it->second,
+              fen,
+              false,
+              &localStates->back(),
+              Threads.main()
+          );
+          for (const auto& m : MoveList<LEGAL>(localPos))
+              sync_cout << UCI::move(localPos, m) << sync_endl;
+      }
       // UCI-Cyclone omits the "position" keyword
       else if (token == "fen" || token == "startpos")
       {
