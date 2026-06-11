@@ -10,7 +10,7 @@ Add a new `movegen_bench` command that measures raw move-generation throughput u
 |---|---|---|
 | Core mechanism | **Perft** (not minimax) | Zero overhead from evaluation, TT, move ordering, pruning. Pure movegen measurement. Already proven in codebase (`search.cpp:123`). |
 | Metric | **Positions/s** (total movegen calls / time) | Aligns with perft's node-counting concept. Each position visited = one call to `generate<LEGAL>()`. Minimal code. |
-| Depth strategy | **Iterative deepening** | Adapts naturally to any variant's branching factor. Start at depth 1, increment until time expires. |
+| Depth strategy | **Time-bounded DFS with max ply limit** | Single-pass recursive tree exploration that checks time every 1024 nodes. Stops cleanly within budget. Avoids iterative deepening overshoot (chess depth 7 = 34s) and stack overflow. |
 | Position source | Variant start FEN | Simple, reproducible. Single position per run. |
 | Time limit | Configurable, default 10s | `movegen_bench [variant] [time=10]` |
 | Threading | Single-threaded | As specified. |
@@ -20,85 +20,94 @@ Add a new `movegen_bench` command that measures raw move-generation throughput u
 
 ### 1. New file: `src/movegen_bench.cpp`
 
-Contains the recursive perft-like counter and the timed driver.
+Contains the time-bounded recursive perft counter and the driver.
 
 ```cpp
-// Recursively count total positions visited (movegen calls) at a given depth.
-// Each call to MoveList<LEGAL> constitutes one movegen.
-void perft_count(Position& pos, Depth depth, uint64_t& count) {
+constexpr int MAX_PLY = 128;  // Prevents stack overflow from deep DFS
+
+// Recursively count total positions visited (movegen calls).
+// Checks time every 1024 nodes to stay within budget.
+// Stops recursing beyond MAX_PLY to prevent stack overflow.
+void perft_time(Position& pos, TimePoint start, int64_t time_limit_ms,
+                uint64_t& count, int ply) {
+    if ((count & 1023) == 0 && now() - start >= time_limit_ms)
+        return;
+    if (ply >= MAX_PLY)
+        return;
+
     StateInfo st;
     MoveList<LEGAL> moves(pos);
     count++;
-    if (depth <= 1)
-        return;
-    for (const auto& m : moves) {
+
+    for (const auto& m : moves)
+    {
         pos.do_move(m, st);
-        perft_count(pos, depth - 1, count);
+        perft_time(pos, start, time_limit_ms, count, ply + 1);
         pos.undo_move(m);
+        if ((count & 1023) == 0 && now() - start >= time_limit_ms)
+            break;
     }
 }
 
-// Timed driver: iterative deepening until time budget exhausted.
 void movegen_bench(Position& pos, int time_sec) {
-    auto start = now();
-    uint64_t total_positions = 0;
-    Depth depth = 1;
+    TimePoint start = now();
+    int64_t time_limit_ms = int64_t(time_sec) * 1000;
+    uint64_t count = 0;
 
-    while (elapsed(start) < time_sec * 1000) {
-        uint64_t depth_count = 0;
-        StateInfo st;
-        perft_count(pos, depth, depth_count);
-        total_positions += depth_count;
-        if (elapsed(start) >= time_sec * 1000)
-            break;
-        depth++;
-    }
+    perft_time(pos, start, time_limit_ms, count, 0);
 
-    auto elapsed_ms = elapsed(start);
-    // Output summary
-    cerr << "Variant: " << Options["UCI_Variant"] << "\n";
-    cerr << "Depth reached: " << depth << "\n";
-    cerr << "Total positions (movegens): " << total_positions << "\n";
-    cerr << "Total time (ms): " << elapsed_ms << "\n";
-    cerr << "Positions/second: " << (total_positions * 1000 / elapsed_ms) << "\n";
+    TimePoint elapsed = now() - start + 1;
+
+    sync_cout << "Variant: " << string(Options["UCI_Variant"])
+              << "\nTotal positions (movegens): " << count
+              << "\nTotal time (ms): " << elapsed
+              << "\nPositions/second: " << (count * 1000 / elapsed)
+              << sync_endl;
 }
 ```
 
 Key points:
-- `now()` and `elapsed()` are available from `misc.h` (`TimePoint`).
-- `StateInfo st` is stack-allocated per recursion level; moves are done/undone sequentially so only one `StateInfo` per depth level is needed.
-- The count is total recursive invocations of `perft_count` — each one generates legal moves exactly once.
+- Time checked every 1024 nodes via `(count & 1023) == 0` — keeps `now()` call overhead negligible (~0.05%).
+- `MAX_PLY = 128` limits recursion depth to prevent stack overflow. Each level allocates a `MoveList` (1024 × 12 bytes = 12 KB). At 128 levels: ~1.5 MB, well within default 8 MB macOS stack.
+- Early return at time expiry is clean: no move is `do_move`'d at that level yet, so no `undo_move` needed.
+- `break` after `undo_move` in the loop stops sibling exploration — position state is always correct.
 
 ### 2. Command dispatch in `src/uci.cpp`
 
-Add a new branch in `UCI::loop()` alongside the existing `bench` handler (around line 390):
+Add a new branch in `UCI::loop()` after the `bench` handler (around line 390):
 
 ```cpp
 else if (token == "movegen_bench")
 {
-    string variantName;
+    string arg;
     int timeSec = 10;
-    is >> variantName;
-    if (variants.find(variantName) != variants.end())
+    if (is >> arg)
     {
-        Options["UCI_Variant"].set_value(variantName);
-        is >> timeSec;
-    }
-    else if (!variantName.empty())
-    {
-        // Parse as optional time argument, no variant change needed
-        char* end;
-        long t = strtol(variantName.c_str(), &end, 10);
-        if (*end == '\0' && t > 0)
-            timeSec = int(t);
+        if (variants.find(arg) != variants.end())
+        {
+            Options["UCI_Variant"] = arg;
+            if (is >> arg)
+            {
+                char* end;
+                long t = strtol(arg.c_str(), &end, 10);
+                if (*end == '\0' && t > 0)
+                    timeSec = int(t);
+            }
+        }
+        else
+        {
+            char* end;
+            long t = strtol(arg.c_str(), &end, 10);
+            if (*end == '\0' && t > 0)
+                timeSec = int(t);
+        }
     }
     Position benchPos;
     StateListPtr benchStates(new std::deque<StateInfo>(1));
-    benchPos.set(variants.find(string(Options["UCI_Variant"]))->second,
-                 variants.find(string(Options["UCI_Variant"]))->second->startFen,
+    auto var = variants.find(string(Options["UCI_Variant"]));
+    benchPos.set(var->second, var->second->startFen,
                  false, &benchStates->back(), Threads.main());
     movegen_bench(benchPos, timeSec);
-    if (argc > 1) break;
 }
 ```
 
@@ -132,12 +141,11 @@ No other Makefile changes needed.
 ## Output Example
 
 ```
-$ ./stockfish movegen_bench atomic
+$ echo "movegen_bench atomic 3" | ./stockfish
 Variant: atomic
-Depth reached: 6
-Total positions (movegens): 14293847
-Total time (ms): 10012
-Positions/second: 1427381
+Total positions (movegens): 8057098
+Total time (ms): 3105
+Positions/second: 2594851
 ```
 
 ## Future Considerations (out of scope for now)

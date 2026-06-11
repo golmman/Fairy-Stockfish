@@ -40,6 +40,7 @@ using namespace std;
 namespace Stockfish {
 
 extern vector<string> setup_bench(const Position&, istream&);
+extern void movegen_bench(Position&, int);
 
 namespace {
 
@@ -388,6 +389,37 @@ void UCI::loop(int argc, char* argv[]) {
       // Do not use these commands during a search!
       else if (token == "flip")     pos.flip();
       else if (token == "bench")    bench(pos, is, states);
+      else if (token == "movegen_bench")
+      {
+          string arg;
+          int timeSec = 10;
+          if (is >> arg)
+          {
+              if (variants.find(arg) != variants.end())
+              {
+                  Options["UCI_Variant"] = arg;
+                  if (is >> arg)
+                  {
+                      char* end;
+                      long t = strtol(arg.c_str(), &end, 10);
+                      if (*end == '\0' && t > 0)
+                          timeSec = int(t);
+                  }
+              }
+              else
+              {
+                  char* end;
+                  long t = strtol(arg.c_str(), &end, 10);
+                  if (*end == '\0' && t > 0)
+                      timeSec = int(t);
+              }
+          }
+          Position benchPos;
+          StateListPtr benchStates(new std::deque<StateInfo>(1));
+          auto var = variants.find(string(Options["UCI_Variant"]));
+          benchPos.set(var->second, var->second->startFen, false, &benchStates->back(), Threads.main());
+          movegen_bench(benchPos, timeSec);
+      }
       else if (token == "d")        sync_cout << pos << sync_endl;
       else if (token == "eval")     trace_eval(pos);
       else if (token == "compiler") sync_cout << compiler_info() << sync_endl;

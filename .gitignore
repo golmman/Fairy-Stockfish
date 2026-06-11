@@ -33,7 +33,7 @@ __pycache__
 *.pyc
 
 # test artifacts
-tests/*.exp
+*.exp
 src/*.log
 src/*.epd
 src/*.txt
