@@ -43,3 +43,13 @@ Total time (ms): 10003
 Positions/second: 2036266
 ```
 
+## Hints
+
+### Positions/second varies by variant — this is expected
+
+The benchmark reports how many positions the move generator can process per second. This number differs between variants not because the move generator is faster or slower, but because the **game state complexity at depth** differs.
+
+For example, atomic chess typically shows ~6× higher positions/second than standard chess. At shallow depths (perft 5–6) both variants process nodes at nearly the same speed — atomic is actually slightly slower per node due to more complex legal-move checking (extinction pseudo-royal logic) and more piece types to iterate. The gap appears at deeper ply depths (10+): in atomic, every capture removes not just the captured piece but **all adjacent non-pawn pieces** (3–9 pieces per capture via the explosion mechanic). After a few captures the board is much simpler, making subsequent move generation faster. Since the benchmark explores to depth 128 via DFS, the majority of visited positions are at deep depths where atomic is much cheaper per node.
+
+Similarly, variants with high initial piece counts (shogi, capablanca) or complex piece movement (xiangqi, janggi) will show lower positions/second.
+
