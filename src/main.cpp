@@ -37,7 +37,7 @@ using namespace Stockfish;
 
 int main(int argc, char* argv[]) {
 
-  std::cout << engine_info() << std::endl;
+  // Banner suppressed for all commands.
 
   pieceMap.init();
   variants.init();
