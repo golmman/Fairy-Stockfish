@@ -43,6 +43,12 @@ Total time (ms): 10003
 Positions/second: 2036266
 ```
 
+#### Alternative: Perft
+
+E.g. `./stockfish bench atomic 0 1 6 default perft`
+
+`./stockfish bench <variant> <tt_size> <threads> <depth> <fen> perft`
+
 ## Hints
 
 ### Positions/second varies by variant — this is expected
