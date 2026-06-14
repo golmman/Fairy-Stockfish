@@ -36,6 +36,7 @@ echo "movegen_bench 3" | ./stockfish
 ```
 
 Example output:
+
 ```
 Variant: atomic
 Total positions (movegens): 20367392
@@ -49,6 +50,10 @@ E.g. `./stockfish bench atomic 0 1 6 default perft`
 
 `./stockfish bench <variant> <tt_size> <threads> <depth> <fen> perft`
 
+E.g. `echo -e "setoption name UCI_Variant value atomic\nposition fen 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'\ngo perft 6" | ./stockfish`
+
+`echo -e "setoption name UCI_Variant value atomic\nposition fen <FEN>\ngo perft <depth>" | ./stockfish`
+
 ## Hints
 
 ### Positions/second varies by variant — this is expected
@@ -59,3 +64,19 @@ For example, atomic chess typically shows ~6× higher positions/second than stan
 
 Similarly, variants with high initial piece counts (shogi, capablanca) or complex piece movement (xiangqi, janggi) will show lower positions/second.
 
+## Perft numbers for atomic
+
+| #   | Depth 5 | Depth 6   | FEN                                                                     |
+| --- | ------- | --------- | ----------------------------------------------------------------------- |
+| 1   | ?       | 118926424 | `rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1`              |
+| 2   | ?       | ?         | `rnbqkbnr/ppp2pp1/4p2p/3p4/3PP3/7N/PPP2PPP/RNBQKB1R w KQkq - 0 4`       |
+| 3   | ?       | ?         | `rnb1kb1r/p5p1/2pNp2p/1p1q1p2/3P1Pn1/N5P1/PPP4P/R1BQKB1R b KQkq - 6 10` |
+| 4   | ?       | ?         | `r4b1r/p1N1k1p1/2pNp2p/5p2/1n1P1P2/6PP/PP6/R1B1K3 b Q - 4 17`           |
+| 5   | ?       | ?         | `r1k4r/p4Np1/N1p1p2p/5p2/3P1P2/6PP/8/5K2 w - - 0 22`                    |
+| 6   | ?       | ?         | `r1k1r3/p5p1/N1p4p/2N2p2/5P2/6PP/8/5K2 w - - 2 25`                      |
+| 7   | ?       | ?         | `r1k5/p7/N1p5/2N4p/7P/8/5r2/4K3 w - - 0 31`                             |
+| 8   | ?       | ?         | `r2k4/p7/N1p5/7p/7P/8/2K5/8 w - - 2 34`                                 |
+| 9   | ?       | ?         | `3r4/8/8/5k1p/4KN1P/p1p5/8/8 w - - 6 44`                                |
+| 10  | ?       | ?         | `5r2/8/4k1N1/4K2p/7P/p7/8/2q5 w - - 0 48`                               |
+| 11  | ?       | ?         | `8/4N3/8/4K2p/1r3qkP/8/8/q7 w - - 16 59`                                |
+| 12  | ?       | ?         | `8/4N3/8/7p/1r3q1P/6K1/7k/q7 b - - 21 61`                               |
